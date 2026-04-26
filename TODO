@@ -1,0 +1,2 @@
+- Dataset imblanace => maybe sampling with reverse population is a better aprroach??
+- Having evaluation module that goes over the predictions csv and produces the confusion matrix, both per dataset and overal
