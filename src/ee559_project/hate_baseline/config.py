@@ -32,12 +32,19 @@ class ExperimentConfig:
     weight_decay: float = 0.01
 
     pooling: str = "auto"  # auto, cls, mean
-    head: str = "linear"  # linear, mlp
+    head: str = "linear"  # linear, mlp, moe
     hidden_dim: int = 256
     dropout: float = 0.1
 
+    # MoE head parameters (only used when head == "moe")
+    num_experts: int = 8
+    top_k: int = 2
+    lb_coeff: float = 0.01
+
     device: str = "cpu"
     datasets: list[str] | None = None
+
+    oversample_minority: bool = False  # weighted sampler on train set to handle class imbalance
 
     max_train_samples: int | None = None
     max_val_samples: int | None = None

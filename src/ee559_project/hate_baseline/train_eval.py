@@ -59,6 +59,12 @@ def train_one_epoch(model, dataloader, optimizer, device: str) -> float:
         optimizer.zero_grad()
         logits = model(input_ids=input_ids, attention_mask=attention_mask)
         loss = criterion(logits, labels)
+
+        # Add MoE load-balancing auxiliary loss when using the MoE head
+        lb_loss = getattr(model, "_last_lb_loss", None)
+        if lb_loss is not None:
+            loss = loss + lb_loss
+
         loss.backward()
         optimizer.step()
 

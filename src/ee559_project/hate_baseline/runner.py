@@ -57,6 +57,7 @@ def run_experiment(
         max_length=config.max_length,
         batch_size=config.batch_size,
         shuffle=True,
+        oversample_minority=config.oversample_minority,
     )
     val_loader = make_dataloader(
         splits["val"],
@@ -79,6 +80,9 @@ def run_experiment(
         head=config.head,
         hidden_dim=config.hidden_dim,
         dropout=config.dropout,
+        num_experts=config.num_experts,
+        top_k=config.top_k,
+        lb_coeff=config.lb_coeff,
     )
 
     device = config.device
@@ -94,16 +98,23 @@ def run_experiment(
 
     best_state = None
     best_macro_f1 = -1.0
+    best_val_metrics: dict = {}
 
-    for _ in range(config.epochs):
+    for epoch in range(config.epochs):
         train_one_epoch(model, train_loader, optimizer, device=device)
         val_metrics = evaluate(model, val_loader, device=device)
+        print(f"  epoch {epoch + 1}/{config.epochs} val: {val_metrics}", flush=True)
         if val_metrics["macro_f1"] > best_macro_f1:
             best_macro_f1 = val_metrics["macro_f1"]
+            best_val_metrics = val_metrics
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
     if best_state is not None:
         model.load_state_dict(best_state)
+
+    safe_name = model_name.replace("/", "_")
+    checkpoint_path = output_dir / f"checkpoint_{safe_name}_{config.head}_{'_'.join(config.datasets or ['all'])}.pt"
+    torch.save(best_state, checkpoint_path)
 
     test_metrics = evaluate(model, test_loader, device=device)
     y_true, y_pred, y_prob = predict(model, test_loader, device=device)
@@ -134,6 +145,8 @@ def run_experiment(
             "test": len(splits["test"]),
         },
         "split_dataset_report": split_report.to_dict(orient="records"),
+        "best_val_metrics": best_val_metrics,
+        "test_metrics": test_metrics,
     }
 
     metadata_path = output_dir / f"run_{safe_name}.json"

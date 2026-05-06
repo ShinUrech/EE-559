@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 
 class HateSpeechDataset(Dataset):
@@ -131,12 +131,45 @@ def split_dataset_report(splits: dict[str, pd.DataFrame]) -> pd.DataFrame:
     return report.reset_index().sort_values("dataset").reset_index(drop=True)
 
 
+def make_weighted_sampler(frame: pd.DataFrame) -> WeightedRandomSampler:
+    """Returns a WeightedRandomSampler that up-samples the minority class.
+
+    Each sample gets weight = 1 / count(its class), so minority samples are
+    drawn more often and majority samples less often, giving an approximately
+    balanced effective training distribution without discarding any data.
+    """
+    labels = frame["label"].astype(int).to_numpy()
+    class_counts = np.bincount(labels)
+    # Guard against a class with zero samples
+    class_counts = np.where(class_counts == 0, 1, class_counts)
+    sample_weights = torch.tensor(1.0 / class_counts[labels], dtype=torch.float)
+    return WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True,
+    )
+
+
 def make_dataloader(
     frame: pd.DataFrame,
     tokenizer,
     max_length: int,
     batch_size: int,
     shuffle: bool,
+    oversample_minority: bool = False,
 ) -> DataLoader:
+    """Build a DataLoader for a split.
+
+    Args:
+        oversample_minority: when True (recommended for training on imbalanced
+            datasets), uses a WeightedRandomSampler so every class is seen
+            roughly equally often per epoch.  Mutually exclusive with shuffle;
+            the sampler controls ordering.  Has no effect on val/test loaders
+            (pass False there).
+    """
     dataset = HateSpeechDataset(frame, tokenizer=tokenizer, max_length=max_length)
+    if oversample_minority:
+        sampler = make_weighted_sampler(frame)
+        # shuffle must be False when a sampler is provided
+        return DataLoader(dataset, batch_size=batch_size, sampler=sampler)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
